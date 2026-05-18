@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 70" width="300" height="70">
+  <defs>
+    <linearGradient id="gradw-a" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#d0e4f5;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gradw-b" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4edbc8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2abfaa;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gradw-ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#d0e4f5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Icon: Concentric rings with checkmark — horizontally aligned with text -->
+  <g transform="translate(30, 28)">
+    <!-- Outer ring (1st line) -->
+    <path d="M-24,-2 A24,24 0 1,1 -24,3" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.25" stroke-linecap="round"/>
+
+    <!-- Middle ring (2nd line) -->
+    <path d="M-17,-2 A17,17 0 1,1 -17,3" fill="none" stroke="url(#gradw-ring)" stroke-width="2.5" opacity="0.5" stroke-linecap="round"/>
+
+    <!-- Inner ring (3rd line - emphasized) -->
+    <circle cx="0" cy="0" r="11" fill="none" stroke="url(#gradw-a)" stroke-width="3" opacity="0.9"/>
+
+    <!-- Center checkmark -->
+    <path d="M-4,1.5 L-1.5,4 L5,-3.5" fill="none" stroke="url(#gradw-b)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Text: thirdline -->
+  <text x="66" y="34" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="30" fill="#ffffff" letter-spacing="-0.5">
+    <tspan font-weight="300">third</tspan><tspan font-weight="700" fill="#d0e4f5">line</tspan>
+  </text>
+
+  <!-- Tagline: "Internal Audit" — underneath thirdline, matching font -->
+  <text x="68" y="52" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="13" fill="rgba(255,255,255,0.6)" letter-spacing="3.5" font-weight="300">
+    Internal Audit
+  </text>
+</svg>
