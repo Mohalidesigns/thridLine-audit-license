@@ -1,4 +1,4 @@
-name: Deploy to cPanel
+name: Deploy to cPanel via SSH
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    name: Deploy Laravel to cPanel via FTP
+    name: Deploy License Server to cPanel
 
     steps:
       - name: Checkout code
@@ -22,29 +22,32 @@ jobs:
           coverage: none
 
       - name: Install Composer dependencies
-        run: |
-          composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
-      - name: Create .env file
-        run: |
-          cp .env.example .env
-          php artisan key:generate
-
-      - name: Set directory permissions
-        run: |
-          chmod -R 755 storage bootstrap/cache
-
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Deploy via SSH (rsync)
+        uses: easingthemes/ssh-deploy@main
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./
-          server-dir: /public_html/LicenseServer/
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            .env
-            .env.example
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          ARGS: "-rlgoDzvc --delete"
+          SOURCE: "./"
+          REMOTE_HOST: ${{ secrets.SSH_HOST }}
+          REMOTE_USER: ${{ secrets.SSH_USERNAME }}
+          TARGET: "/home/atheunqg/public_html/LicenseServer"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /.env.example"
+
+      - name: Post-deploy setup via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/atheunqg/public_html/LicenseServer
+            if [ ! -f .env ]; then
+              cp .env.example .env
+              php artisan key:generate
+            fi
+            php artisan config:cache
+            php artisan route:cache
+            php artisan migrate --force
+            chmod -R 755 storage bootstrap/cache
