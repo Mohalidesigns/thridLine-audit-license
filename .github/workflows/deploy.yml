@@ -1,22 +1,18 @@
 name: Deploy to cPanel
 
-
 on:
   push:
     branches:
       - main
-
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy Laravel to cPanel via FTP
 
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -25,19 +21,30 @@ jobs:
           extensions: mbstring, pdo, pdo_mysql, xml, curl, zip
           coverage: none
 
-
       - name: Install Composer dependencies
         run: |
           composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
-
 
       - name: Create .env file
         run: |
           cp .env.example .env
           php artisan key:generate
 
-
       - name: Set directory permissions
         run: |
           chmod -R 755 storage bootstrap/cache
 
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./
+          server-dir: /public_html/LicenseServer/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            .env
+            .env.example
