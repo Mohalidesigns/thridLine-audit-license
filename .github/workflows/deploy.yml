@@ -32,7 +32,7 @@ jobs:
           SOURCE: "./"
           REMOTE_HOST: ${{ secrets.SSH_HOST }}
           REMOTE_USER: ${{ secrets.SSH_USERNAME }}
-          REMOTE_PORT: ${{ secrets.SSH_PORT }}
+          REMOTE_PORT: "22"
           TARGET: "/home/atheunqg/public_html/LicenseServer"
           EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /.env.example"
 
@@ -42,7 +42,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          port: 22
           script: |
             cd /home/atheunqg/public_html/LicenseServer
             if [ ! -f .env ]; then
