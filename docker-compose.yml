@@ -1,0 +1,80 @@
+name: thirdline-license
+
+services:
+  app:
+    build:
+      context: .
+      target: app
+    image: thirdline-license-app
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - license-storage:/var/www/html/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [internal]
+
+  web:
+    build:
+      context: .
+      target: web
+    image: thirdline-license-web
+    restart: unless-stopped
+    ports:
+      # Localhost-only: the GRC app reaches this at http://127.0.0.1:8088
+      - "127.0.0.1:8088:80"
+    depends_on:
+      - app
+    networks: [internal]
+
+  worker:
+    image: thirdline-license-app
+    restart: unless-stopped
+    env_file: .env
+    command: php artisan queue:work --tries=3 --sleep=3 --max-time=3600
+    volumes:
+      - license-storage:/var/www/html/storage
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [internal]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-thirdline_license}
+      POSTGRES_USER: ${DB_USERNAME:-license}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U license -d thirdline_license"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+volumes:
+  pgdata:
+  license-storage:
+
+networks:
+  internal:
