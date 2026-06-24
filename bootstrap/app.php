@@ -20,6 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->statefulApi();
+
+        // Behind the host nginx reverse proxy (localhost-bound container); honor
+        // X-Forwarded-* so Laravel knows requests arrive over HTTPS. Only the host
+        // proxy can reach 127.0.0.1:8088, so trusting all forwarded headers is safe.
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
