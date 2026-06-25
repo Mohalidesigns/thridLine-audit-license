@@ -8,7 +8,6 @@ use App\Http\Requests\ValidateLicenseRequest;
 use App\Models\AuditLog;
 use App\Models\License;
 use App\Models\LicenseActivation;
-use App\Models\RevocationList;
 use App\Services\Licensing\LicenseEngine;
 use Illuminate\Http\JsonResponse;
 
@@ -34,6 +33,17 @@ class ActivationController extends Controller
                 'error' => 'license_not_found',
                 'message' => 'No license found with the provided key.',
             ], 404);
+        }
+
+        if ($license->isEffectivelyRevoked()) {
+            AuditLog::record('activation.failed', 'license', $license->id, [
+                'reason' => 'license_revoked',
+            ], 'client_app');
+
+            return response()->json([
+                'error' => 'license_revoked',
+                'message' => 'This license has been revoked.',
+            ], 403);
         }
 
         if (!$license->isActive()) {
@@ -137,15 +147,9 @@ class ActivationController extends Controller
             ], 404);
         }
 
-        // Check revocation
-        $isRevoked = RevocationList::where('license_id', $license->id)
-            ->where(function ($q) {
-                $q->whereNull('effective_at')
-                  ->orWhere('effective_at', '<=', now());
-            })
-            ->exists();
-
-        if ($isRevoked || $license->status === 'revoked') {
+        // Check revocation (status flag OR an in-effect revocation row;
+        // cancelled and future-scheduled rows are ignored)
+        if ($license->isEffectivelyRevoked()) {
             AuditLog::record('validation.failed', 'license', $license->id, [
                 'reason' => 'license_revoked',
             ], 'client_app');

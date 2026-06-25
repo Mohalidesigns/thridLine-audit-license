@@ -351,6 +351,7 @@ class LicenseManagementTest extends TestCase
             ->postJson('/api/v1/licenses/revoke', [
                 'license_id' => $this->license->id,
                 'reason' => 'Customer request',
+                'confirm_license_key' => $this->license->license_key,
                 'effective_immediately' => true,
             ]);
 
@@ -399,6 +400,7 @@ class LicenseManagementTest extends TestCase
             ->postJson('/api/v1/licenses/revoke', [
                 'license_id' => $this->license->id,
                 'reason' => 'Test revoke',
+                'confirm_license_key' => $this->license->license_key,
                 'effective_immediately' => true,
             ]);
 
@@ -421,6 +423,7 @@ class LicenseManagementTest extends TestCase
             ->postJson('/api/v1/licenses/revoke', [
                 'license_id' => $this->license->id,
                 'reason' => 'Test',
+                'confirm_license_key' => $this->license->license_key,
                 'effective_immediately' => true,
             ]);
 

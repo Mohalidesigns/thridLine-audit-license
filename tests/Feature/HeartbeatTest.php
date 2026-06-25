@@ -155,7 +155,7 @@ class HeartbeatTest extends TestCase
         RevocationList::create([
             'license_id' => $this->license->id,
             'reason' => 'test-revocation',
-            'revoked_by' => null,
+            'revoked_by' => \Illuminate\Support\Str::uuid()->toString(),
             'revoked_at' => now(),
             'effective_at' => now(),
         ]);
@@ -302,7 +302,7 @@ class HeartbeatTest extends TestCase
         RevocationList::create([
             'license_id' => $this->license->id,
             'reason' => 'test-revocation',
-            'revoked_by' => null,
+            'revoked_by' => \Illuminate\Support\Str::uuid()->toString(),
             'revoked_at' => now(),
             'effective_at' => now(),
         ]);

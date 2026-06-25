@@ -64,6 +64,15 @@ class License extends Model
         return $this->hasMany(RevocationList::class);
     }
 
+    /**
+     * The latest scheduled revoke still waiting to take effect (if any).
+     * Drives the "revoke scheduled" badge + cancel action in the admin portal.
+     */
+    public function pendingRevocation(): HasOne
+    {
+        return $this->hasOne(RevocationList::class)->pending()->latest('revoked_at');
+    }
+
     public function usageMetrics(): HasMany
     {
         return $this->hasMany(LicenseUsageMetric::class);
@@ -77,6 +86,18 @@ class License extends Model
     public function isRevoked(): bool
     {
         return $this->status === 'revoked';
+    }
+
+    /**
+     * True if the license is revoked by status OR carries a revocation that is
+     * already in effect (covers scheduled revokes whose effective time has
+     * passed but whose status flip the apply-revocations command hasn't run
+     * yet). This is the authoritative client-facing revocation check.
+     */
+    public function isEffectivelyRevoked(): bool
+    {
+        return $this->status === 'revoked'
+            || $this->revocations()->inEffect()->exists();
     }
 
     public function isActive(): bool

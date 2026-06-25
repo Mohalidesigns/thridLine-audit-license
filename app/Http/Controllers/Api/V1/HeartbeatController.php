@@ -8,7 +8,6 @@ use App\Models\AuditLog;
 use App\Models\License;
 use App\Models\LicenseActivation;
 use App\Models\LicenseUsageMetric;
-use App\Models\RevocationList;
 use Illuminate\Http\JsonResponse;
 
 class HeartbeatController extends Controller
@@ -52,13 +51,9 @@ class HeartbeatController extends Controller
             ]);
         }
 
-        // Check if license is revoked
-        $isRevoked = RevocationList::where('license_id', $license->id)
-            ->where(function ($q) {
-                $q->whereNull('effective_at')
-                  ->orWhere('effective_at', '<=', now());
-            })
-            ->exists();
+        // Check if license is revoked (status flag OR an in-effect revocation
+        // row; cancelled and future-scheduled rows are ignored)
+        $isRevoked = $license->isEffectivelyRevoked();
 
         $commands = [];
         $updatedEntitlements = [

@@ -22,6 +22,11 @@ class LicenseResource extends JsonResource
             'notes' => $this->notes,
             'organization' => new OrganizationResource($this->whenLoaded('organization')),
             'active_activations_count' => $this->whenCounted('activeActivations'),
+            'pending_revocation' => $this->whenLoaded('pendingRevocation', fn () => $this->pendingRevocation ? [
+                'id' => $this->pendingRevocation->id,
+                'reason' => $this->pendingRevocation->reason,
+                'effective_at' => $this->pendingRevocation->effective_at?->toISOString(),
+            ] : null),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

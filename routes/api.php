@@ -57,6 +57,7 @@ Route::prefix('v1')->group(function () {
         Route::post('licenses', [LicenseController::class, 'store']);
         Route::put('licenses/{license}', [LicenseController::class, 'update']);
         Route::post('licenses/revoke', [LicenseController::class, 'revoke']);
+        Route::post('licenses/revoke/cancel', [LicenseController::class, 'cancelRevoke']);
         Route::post('licenses/{license}/renew', [LicenseController::class, 'renew']);
         Route::post('licenses/{license}/transfer', [LicenseController::class, 'transfer']);
         Route::get('licenses/{license}/download-file', [LicenseController::class, 'downloadFile']);
