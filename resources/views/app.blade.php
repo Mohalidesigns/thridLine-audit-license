@@ -12,24 +12,22 @@
 <body class="h-full bg-surface text-text-primary font-sans antialiased"
       x-data="{ currentPage: 'dashboard', sidebarOpen: true }"
       x-init="
-        if (!$store.auth.isAuthenticated) {
-            currentPage = 'login';
-        }
-        window.addEventListener('hashchange', () => {
+        const route = () => {
             const hash = window.location.hash.replace('#/', '') || 'dashboard';
-            if (!$store.auth.isAuthenticated && hash !== 'login') {
-                window.location.hash = '#/login';
+            if (!$store.auth.isAuthenticated) {
+                if (hash !== 'login') window.location.hash = '#/login';
                 currentPage = 'login';
             } else {
-                currentPage = hash;
+                currentPage = hash === 'login' ? 'dashboard' : hash;
             }
-        });
-        const initHash = window.location.hash.replace('#/', '') || 'dashboard';
-        if (!$store.auth.isAuthenticated) {
-            window.location.hash = '#/login';
-            currentPage = 'login';
-        } else {
-            currentPage = initHash;
+        };
+        window.addEventListener('hashchange', route);
+        route();
+        // If we booted with a persisted token, confirm it's still valid before
+        // trusting it — an expired/revoked token sends us back to login instead
+        // of flashing the authenticated shell.
+        if ($store.auth.isAuthenticated) {
+            $store.auth.verify().then((ok) => { route(); });
         }
       ">
 

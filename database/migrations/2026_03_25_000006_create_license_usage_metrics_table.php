@@ -14,7 +14,7 @@ return new class extends Migration
             $table->foreignUuid('activation_id')->constrained('license_activations');
             $table->unsignedInteger('active_users_count');
             $table->json('feature_usage');
-            $table->timestamp('reported_at');
+            $table->dateTime('reported_at');
             $table->timestamps();
 
             $table->index(['license_id', 'reported_at']);

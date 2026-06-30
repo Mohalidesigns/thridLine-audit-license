@@ -36,6 +36,7 @@ class LicenseEngine
             'exp'  => $license->expires_at->timestamp,
             'lk'   => $license->license_key,
             'plan' => $license->plan,
+            'ltyp' => $license->type ?? 'full',
             'feat' => $license->features,
             'mu'   => $license->max_users,
             'ma'   => $license->max_activations,
@@ -93,6 +94,7 @@ class LicenseEngine
             'license'     => [
                 'id'              => $license->id,
                 'plan'            => $license->plan,
+                'type'            => $license->type ?? 'full',
                 'features'        => $license->features,
                 'max_users'       => $license->max_users,
                 'max_activations' => $license->max_activations,

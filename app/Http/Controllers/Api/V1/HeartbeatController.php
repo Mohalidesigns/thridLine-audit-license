@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HeartbeatRequest;
+use App\Models\ApiClient;
 use App\Models\AuditLog;
 use App\Models\License;
 use App\Models\LicenseActivation;
@@ -24,6 +25,21 @@ class HeartbeatController extends Controller
                 'error' => 'license_not_found',
                 'message' => 'No license found with the provided key.',
             ], 404);
+        }
+
+        $apiClient = $request->input('api_client');
+        if (!$apiClient instanceof ApiClient || $license->org_id !== $apiClient->org_id) {
+            AuditLog::record('tenant_mismatch.detected', 'license', $license->id, [
+                'action' => 'heartbeat',
+                'license_org_id' => $license->org_id,
+                'api_client_org_id' => $apiClient?->org_id,
+                'api_client_id' => $apiClient?->id,
+            ], 'client_app', $apiClient?->id);
+
+            return response()->json([
+                'error' => 'tenant_mismatch',
+                'message' => 'This license does not belong to your organization.',
+            ], 403);
         }
 
         $activation = LicenseActivation::where('license_id', $license->id)
@@ -65,6 +81,8 @@ class HeartbeatController extends Controller
             'features' => $license->features,
             'max_users' => $license->max_users,
             'plan' => $license->plan,
+            'type' => $license->type ?? 'full',
+            'is_trial' => $license->isTrialType(),
             'expires_at' => $license->expires_at->toISOString(),
         ];
 
@@ -82,7 +100,7 @@ class HeartbeatController extends Controller
             'license_id' => $license->id,
             'active_users' => $validated['active_users'] ?? null,
             'app_version' => $validated['app_version'] ?? null,
-        ], 'client_app');
+        ], 'client_app', $apiClient?->id);
 
         return response()->json([
             'data' => [
@@ -92,7 +110,7 @@ class HeartbeatController extends Controller
                 'next_heartbeat_before' => $nextHeartbeat->toISOString(),
                 'updated_entitlements' => $updatedEntitlements,
                 'commands' => $commands,
-                'grace_period_days' => config('licensing.plans.' . $license->plan . '.grace_days', config('licensing.grace_period_days', 7)),
+                'grace_period_days' => $license->gracePeriodDays(),
             ],
         ]);
     }

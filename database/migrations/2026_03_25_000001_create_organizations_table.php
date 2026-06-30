@@ -15,7 +15,8 @@ return new class extends Migration
             $table->string('contact_email');
             $table->string('industry')->nullable();
             $table->string('country')->default('NG');
-            $table->jsonb('metadata')->nullable();
+            // json (MySQL has no jsonb; Postgres maps json fine too).
+            $table->json('metadata')->nullable();
             $table->timestamps();
             $table->softDeletes();
 

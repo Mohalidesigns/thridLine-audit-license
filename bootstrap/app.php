@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AuthenticateApiClient;
+use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\IpAllowlist;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -17,9 +18,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'api.client' => AuthenticateApiClient::class,
             'ip.allowlist' => IpAllowlist::class,
+            'perm' => EnsurePermission::class,
         ]);
 
-        $middleware->statefulApi();
+        // The admin SPA authenticates with bearer tokens (Sanctum personal access
+        // tokens), not session cookies — so we intentionally do NOT enable
+        // statefulApi(). Enabling it would apply session + CSRF to /api/v1/*,
+        // and the token-based fetch() calls (no X-XSRF-TOKEN) would get 419s.
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

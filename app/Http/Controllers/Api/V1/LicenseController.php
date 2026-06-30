@@ -53,15 +53,21 @@ class LicenseController extends Controller
     {
         $validated = $request->validated();
 
+        $type = $validated['type'] ?? config('licensing.default_type', 'full');
+        // When duration is omitted, derive it from the type's default window.
+        $durationDays = $validated['duration_days']
+            ?? config("licensing.types.{$type}.default_duration_days", config('licensing.ttl', 365));
+
         $license = License::create([
             'org_id' => $validated['org_id'],
             'license_key' => $this->engine->generateLicenseKey(),
             'plan' => $validated['plan'],
+            'type' => $type,
             'features' => $validated['features'],
             'max_users' => $validated['max_users'],
             'max_activations' => $validated['max_activations'],
             'issued_at' => now(),
-            'expires_at' => now()->addDays($validated['duration_days']),
+            'expires_at' => now()->addDays($durationDays),
             'status' => 'active',
             'issued_by' => auth()->id(),
             'notes' => $validated['notes'] ?? null,
@@ -82,6 +88,7 @@ class LicenseController extends Controller
                 'license_key' => $license->license_key,
                 'token' => $fileData['envelope']['token'],
                 'plan' => $license->plan,
+                'type' => $license->type,
                 'features' => $license->features,
                 'issued_at' => $license->issued_at->toISOString(),
                 'expires_at' => $license->expires_at->toISOString(),
@@ -98,6 +105,7 @@ class LicenseController extends Controller
     {
         $validated = $request->validate([
             'plan' => ['sometimes', 'string', 'in:starter,professional,enterprise'],
+            'type' => ['sometimes', 'string', 'in:' . implode(',', array_keys(config('licensing.types', ['full' => []])))],
             'features' => ['sometimes', 'array'],
             'max_users' => ['sometimes', 'integer', 'min:1'],
             'max_activations' => ['sometimes', 'integer', 'min:1'],

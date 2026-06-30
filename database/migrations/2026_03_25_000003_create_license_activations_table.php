@@ -15,7 +15,7 @@ return new class extends Migration
             $table->string('hostname')->nullable();
             $table->string('ip_address', 45)->nullable();
             $table->string('os_info')->nullable();
-            $table->timestamp('activated_at');
+            $table->dateTime('activated_at');
             $table->timestamp('last_seen_at')->nullable();
             $table->string('status')->default('active'); // active, deactivated
             $table->timestamp('deactivated_at')->nullable();
