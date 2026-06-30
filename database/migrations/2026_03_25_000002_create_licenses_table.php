@@ -16,8 +16,8 @@ return new class extends Migration
             $table->json('features');
             $table->unsignedInteger('max_users')->default(5);
             $table->unsignedInteger('max_activations')->default(1);
-            $table->timestamp('issued_at');
-            $table->timestamp('expires_at');
+            $table->dateTime('issued_at');
+            $table->dateTime('expires_at');
             $table->string('status')->default('active'); // active, suspended, revoked, expired
             $table->uuid('issued_by')->nullable();
             $table->text('notes')->nullable();

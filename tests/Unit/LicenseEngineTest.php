@@ -201,7 +201,7 @@ class LicenseEngineTest extends BaseTestCase
         $this->assertIsInt($decoded->nbf); // not before
         $this->assertIsInt($decoded->exp); // expiration
         $this->assertGreaterThanOrEqual($decoded->iat, $decoded->nbf);
-        $this->assertGreaterThan($decoded->exp, $decoded->iat); // exp should be in the future
+        $this->assertGreaterThan($decoded->iat, $decoded->exp); // exp should be in the future
     }
 
     public function test_token_expiration_matches_license_expiry(): void

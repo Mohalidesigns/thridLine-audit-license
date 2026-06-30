@@ -13,6 +13,8 @@ class LicenseResource extends JsonResource
             'id' => $this->id,
             'license_key' => $this->license_key,
             'plan' => $this->plan,
+            'type' => $this->type,
+            'is_trial' => $this->isTrialType(),
             'features' => $this->features,
             'max_users' => $this->max_users,
             'max_activations' => $this->max_activations,
@@ -21,7 +23,14 @@ class LicenseResource extends JsonResource
             'status' => $this->status,
             'notes' => $this->notes,
             'organization' => new OrganizationResource($this->whenLoaded('organization')),
+            'activations' => $this->whenLoaded('activations'),
+            'revocations' => $this->whenLoaded('revocations'),
             'active_activations_count' => $this->whenCounted('activeActivations'),
+            'pending_revocation' => $this->whenLoaded('pendingRevocation', fn () => $this->pendingRevocation ? [
+                'id' => $this->pendingRevocation->id,
+                'reason' => $this->pendingRevocation->reason,
+                'effective_at' => $this->pendingRevocation->effective_at?->toISOString(),
+            ] : null),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

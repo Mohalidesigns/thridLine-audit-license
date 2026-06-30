@@ -38,7 +38,7 @@ class LicenseActivationTest extends TestCase
             'org_id' => $this->organization->id,
             'client_id' => 'test-client-id',
             'client_secret_hash' => Hash::make($this->plainClientSecret),
-            'allowed_scopes' => ['licensing:activate', 'licensing:validate'],
+            'allowed_scopes' => ['license:activate', 'license:validate', 'license:deactivate'],
             'is_active' => true,
         ]);
 
@@ -69,7 +69,7 @@ class LicenseActivationTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-fingerprint-abc123',
+            'device_fingerprint' => hash('sha256', 'device-fingerprint-abc123'),
             'hostname' => 'test-machine',
             'os_info' => 'Windows 10',
         ], $this->activationHeaders());
@@ -93,7 +93,7 @@ class LicenseActivationTest extends TestCase
         // Verify activation was created
         $this->assertTrue(
             LicenseActivation::where('license_id', $this->license->id)
-                ->where('device_fingerprint', 'device-fingerprint-abc123')
+                ->where('device_fingerprint', hash('sha256', 'device-fingerprint-abc123'))
                 ->exists()
         );
     }
@@ -102,7 +102,7 @@ class LicenseActivationTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/activate', [
             'license_key' => 'APGRC-NOPE-9999-9999-9999',
-            'device_fingerprint' => 'device-fingerprint-abc123',
+            'device_fingerprint' => hash('sha256', 'device-fingerprint-abc123'),
         ], $this->activationHeaders());
 
         $response->assertStatus(404)
@@ -115,7 +115,7 @@ class LicenseActivationTest extends TestCase
 
         $response = $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-fingerprint-abc123',
+            'device_fingerprint' => hash('sha256', 'device-fingerprint-abc123'),
         ], $this->activationHeaders());
 
         $response->assertStatus(403)
@@ -128,11 +128,11 @@ class LicenseActivationTest extends TestCase
 
         $response = $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-fingerprint-abc123',
+            'device_fingerprint' => hash('sha256', 'device-fingerprint-abc123'),
         ], $this->activationHeaders());
 
         $response->assertStatus(403)
-            ->assertJson(['error' => 'license_not_active']);
+            ->assertJson(['error' => 'license_revoked']);
     }
 
     public function test_activation_fails_when_max_activations_reached(): void
@@ -141,7 +141,7 @@ class LicenseActivationTest extends TestCase
         for ($i = 0; $i < $this->license->max_activations; $i++) {
             LicenseActivation::create([
                 'license_id' => $this->license->id,
-                'device_fingerprint' => 'device-' . $i,
+                'device_fingerprint' => hash('sha256', 'device-' . $i),
                 'activated_at' => now(),
                 'last_seen_at' => now(),
                 'status' => 'active',
@@ -150,7 +150,7 @@ class LicenseActivationTest extends TestCase
 
         $response = $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-new-one',
+            'device_fingerprint' => hash('sha256', 'device-new-one'),
         ], $this->activationHeaders());
 
         $response->assertStatus(409)
@@ -163,7 +163,7 @@ class LicenseActivationTest extends TestCase
         // First activation
         $firstResponse = $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->activationHeaders());
 
         $firstActivationId = $firstResponse->json('data.activation_id');
@@ -171,7 +171,7 @@ class LicenseActivationTest extends TestCase
         // Reactivate same device
         $secondResponse = $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->activationHeaders());
 
         $secondActivationId = $secondResponse->json('data.activation_id');
@@ -189,7 +189,7 @@ class LicenseActivationTest extends TestCase
         // First activation
         $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->activationHeaders());
 
         $activation = LicenseActivation::where('license_id', $this->license->id)->first();
@@ -199,7 +199,7 @@ class LicenseActivationTest extends TestCase
         sleep(1);
         $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->activationHeaders());
 
         $activation->refresh();
@@ -212,7 +212,7 @@ class LicenseActivationTest extends TestCase
         // First activate
         $activation = LicenseActivation::create([
             'license_id' => $this->license->id,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'activated_at' => now(),
             'last_seen_at' => now(),
             'status' => 'active',
@@ -220,7 +220,7 @@ class LicenseActivationTest extends TestCase
 
         $response = $this->postJson('/api/v1/licenses/deactivate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->activationHeaders());
 
         $response->assertStatus(200)
@@ -235,7 +235,7 @@ class LicenseActivationTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/deactivate', [
             'license_key' => 'APGRC-NOPE-9999-9999-9999',
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->activationHeaders());
 
         $response->assertStatus(404)
@@ -246,7 +246,7 @@ class LicenseActivationTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/deactivate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-nonexistent',
+            'device_fingerprint' => hash('sha256', 'device-nonexistent'),
         ], $this->activationHeaders());
 
         $response->assertStatus(404)
@@ -259,7 +259,7 @@ class LicenseActivationTest extends TestCase
         // Activate first
         LicenseActivation::create([
             'license_id' => $this->license->id,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'activated_at' => now(),
             'last_seen_at' => now(),
             'status' => 'active',
@@ -267,7 +267,7 @@ class LicenseActivationTest extends TestCase
 
         $response = $this->postJson('/api/v1/licenses/validate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'current_users' => 5,
         ], $this->activationHeaders());
 
@@ -292,7 +292,7 @@ class LicenseActivationTest extends TestCase
         // Activate first
         LicenseActivation::create([
             'license_id' => $this->license->id,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'activated_at' => now(),
             'last_seen_at' => now(),
             'status' => 'active',
@@ -303,14 +303,14 @@ class LicenseActivationTest extends TestCase
         RevocationList::create([
             'license_id' => $this->license->id,
             'reason' => 'test-revocation',
-            'revoked_by' => null,
+            'revoked_by' => \Illuminate\Support\Str::uuid()->toString(),
             'revoked_at' => now(),
             'effective_at' => now(),
         ]);
 
         $response = $this->postJson('/api/v1/licenses/validate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->activationHeaders());
 
         $response->assertStatus(403)
@@ -322,7 +322,7 @@ class LicenseActivationTest extends TestCase
         // Activate first
         LicenseActivation::create([
             'license_id' => $this->license->id,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'activated_at' => now(),
             'last_seen_at' => now(),
             'status' => 'active',
@@ -333,7 +333,7 @@ class LicenseActivationTest extends TestCase
 
         $response = $this->postJson('/api/v1/licenses/validate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->activationHeaders());
 
         $response->assertStatus(403)
@@ -345,7 +345,7 @@ class LicenseActivationTest extends TestCase
         // Activate with one device
         LicenseActivation::create([
             'license_id' => $this->license->id,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'activated_at' => now(),
             'last_seen_at' => now(),
             'status' => 'active',
@@ -354,7 +354,7 @@ class LicenseActivationTest extends TestCase
         // Try to validate with different device
         $response = $this->postJson('/api/v1/licenses/validate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-different',
+            'device_fingerprint' => hash('sha256', 'device-different'),
         ], $this->activationHeaders());
 
         $response->assertStatus(403)
@@ -366,7 +366,7 @@ class LicenseActivationTest extends TestCase
         // Activate first
         LicenseActivation::create([
             'license_id' => $this->license->id,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'activated_at' => now(),
             'last_seen_at' => now(),
             'status' => 'active',
@@ -374,7 +374,7 @@ class LicenseActivationTest extends TestCase
 
         $response = $this->postJson('/api/v1/licenses/validate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'current_users' => 15, // Exceeds max_users of 10
         ], $this->activationHeaders());
 
@@ -387,7 +387,7 @@ class LicenseActivationTest extends TestCase
         // Activate first
         $activation = LicenseActivation::create([
             'license_id' => $this->license->id,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'activated_at' => now(),
             'last_seen_at' => now()->subHours(2),
             'status' => 'active',
@@ -398,7 +398,7 @@ class LicenseActivationTest extends TestCase
         sleep(1);
         $this->postJson('/api/v1/licenses/validate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->activationHeaders());
 
         $activation->refresh();
@@ -410,7 +410,7 @@ class LicenseActivationTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ]); // No headers
 
         $response->assertStatus(401)
@@ -421,7 +421,7 @@ class LicenseActivationTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/activate', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], [
             'X-Client-Id' => 'invalid-client-id',
             'X-Client-Secret' => 'invalid-secret',

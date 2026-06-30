@@ -3,40 +3,24 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\LoginRequest;
 use App\Models\AuditLog;
-use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function login(Request $request): JsonResponse
+    public function login(LoginRequest $request): JsonResponse
     {
-        $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string'],
-        ]);
+        // Credential check + email/IP rate limiting live in LoginRequest,
+        // mirroring ThirdLine's mechanism. Returns the authenticated user.
+        $user = $request->authenticate();
 
-        $user = User::where('email', $request->email)->first();
+        // Scope the token to the user's permissions instead of a wildcard.
+        $abilities = $user->getAllPermissions()->pluck('name')->all() ?: ['none'];
+        $token = $user->createToken('api-token', $abilities)->plainTextToken;
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
-            ]);
-        }
-
-        if (!$user->is_active) {
-            return response()->json([
-                'error' => 'account_disabled',
-                'message' => 'Your account has been disabled.',
-            ], 403);
-        }
-
-        $token = $user->createToken('api-token', ['*'])->plainTextToken;
-
-        AuditLog::record('user.login', 'user', $user->id);
+        AuditLog::record('user.login', 'user', $user->id, null, 'admin', $user->id);
 
         return response()->json([
             'data' => [

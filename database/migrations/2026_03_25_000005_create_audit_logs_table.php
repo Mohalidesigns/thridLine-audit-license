@@ -18,7 +18,7 @@ return new class extends Migration
             $table->json('metadata')->nullable();
             $table->string('ip_address', 45)->nullable();
             $table->string('user_agent')->nullable();
-            $table->timestamp('created_at');
+            $table->dateTime('created_at');
 
             $table->index(['action', 'created_at']);
             $table->index(['resource_type', 'resource_id']);

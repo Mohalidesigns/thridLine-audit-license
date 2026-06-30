@@ -24,7 +24,7 @@ class LicenseController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $licenses = License::with('organization')
+        $licenses = License::with('organization', 'pendingRevocation')
             ->withCount('activeActivations')
             ->when($request->query('status'), fn ($q, $status) => $q->where('status', $status))
             ->when($request->query('org_id'), fn ($q, $orgId) => $q->where('org_id', $orgId))
@@ -43,7 +43,7 @@ class LicenseController extends Controller
 
     public function show(License $license): LicenseResource
     {
-        $license->load('organization', 'activations', 'revocations')
+        $license->load('organization', 'activations', 'revocations', 'pendingRevocation')
             ->loadCount('activeActivations');
 
         return new LicenseResource($license);
@@ -53,15 +53,21 @@ class LicenseController extends Controller
     {
         $validated = $request->validated();
 
+        $type = $validated['type'] ?? config('licensing.default_type', 'full');
+        // When duration is omitted, derive it from the type's default window.
+        $durationDays = $validated['duration_days']
+            ?? config("licensing.types.{$type}.default_duration_days", config('licensing.ttl', 365));
+
         $license = License::create([
             'org_id' => $validated['org_id'],
             'license_key' => $this->engine->generateLicenseKey(),
             'plan' => $validated['plan'],
+            'type' => $type,
             'features' => $validated['features'],
             'max_users' => $validated['max_users'],
             'max_activations' => $validated['max_activations'],
             'issued_at' => now(),
-            'expires_at' => now()->addDays($validated['duration_days']),
+            'expires_at' => now()->addDays($durationDays),
             'status' => 'active',
             'issued_by' => auth()->id(),
             'notes' => $validated['notes'] ?? null,
@@ -82,6 +88,7 @@ class LicenseController extends Controller
                 'license_key' => $license->license_key,
                 'token' => $fileData['envelope']['token'],
                 'plan' => $license->plan,
+                'type' => $license->type,
                 'features' => $license->features,
                 'issued_at' => $license->issued_at->toISOString(),
                 'expires_at' => $license->expires_at->toISOString(),
@@ -98,6 +105,7 @@ class LicenseController extends Controller
     {
         $validated = $request->validate([
             'plan' => ['sometimes', 'string', 'in:starter,professional,enterprise'],
+            'type' => ['sometimes', 'string', 'in:' . implode(',', array_keys(config('licensing.types', ['full' => []])))],
             'features' => ['sometimes', 'array'],
             'max_users' => ['sometimes', 'integer', 'min:1'],
             'max_activations' => ['sometimes', 'integer', 'min:1'],
@@ -123,6 +131,15 @@ class LicenseController extends Controller
         $validated = $request->validated();
         $license = License::findOrFail($validated['license_id']);
 
+        // Typed-confirmation guard: the caller must echo back the exact key.
+        // Defends against accidental one-click revokes from the admin portal.
+        if (! hash_equals($license->license_key, (string) $validated['confirm_license_key'])) {
+            return response()->json([
+                'error' => 'confirmation_mismatch',
+                'message' => 'The confirmation key does not match this license.',
+            ], 422);
+        }
+
         if ($license->status === 'revoked') {
             return response()->json([
                 'error' => 'already_revoked',
@@ -130,33 +147,110 @@ class LicenseController extends Controller
             ], 409);
         }
 
-        RevocationList::create([
+        // A revoke can only be pending once at a time.
+        if ($license->pendingRevocation()->exists()) {
+            return response()->json([
+                'error' => 'revoke_already_scheduled',
+                'message' => 'A scheduled revoke is already pending for this license. Cancel it first to reschedule.',
+            ], 409);
+        }
+
+        // Resolve the grace delay. delay_minutes drives scheduling; omitted or
+        // null means immediate. The legacy effective_immediately flag is still
+        // accepted by the request for backward-compatibility but is a no-op:
+        // without a delay there is nothing to schedule.
+        $delayMinutes = max(0, (int) ($validated['delay_minutes'] ?? 0));
+        $effectiveAt = now()->addMinutes($delayMinutes);
+        $immediate = $delayMinutes <= 0;
+
+        $revocation = RevocationList::create([
             'license_id' => $license->id,
             'reason' => $validated['reason'],
             'revoked_by' => auth()->id(),
             'revoked_at' => now(),
-            'effective_at' => $validated['effective_immediately'] ? now() : null,
+            'effective_at' => $effectiveAt,
+            'applied_at' => $immediate ? now() : null,
         ]);
 
-        $license->update(['status' => 'revoked']);
+        if ($immediate) {
+            $license->update(['status' => 'revoked']);
 
-        $affectedActivations = $license->activeActivations()->count();
-        $license->activeActivations()->update([
-            'status' => 'deactivated',
-            'deactivated_at' => now(),
-        ]);
+            $affectedActivations = $license->activeActivations()->count();
+            $license->activeActivations()->update([
+                'status' => 'deactivated',
+                'deactivated_at' => now(),
+            ]);
 
-        AuditLog::record('license.revoked', 'license', $license->id, [
+            AuditLog::record('license.revoked', 'license', $license->id, [
+                'reason' => $validated['reason'],
+                'affected_activations' => $affectedActivations,
+            ]);
+
+            return response()->json([
+                'data' => [
+                    'license_id' => $license->id,
+                    'status' => 'revoked',
+                    'scheduled' => false,
+                    'revoked_at' => now()->toISOString(),
+                    'affected_activations' => $affectedActivations,
+                ],
+            ]);
+        }
+
+        // Scheduled: the license stays active and activations are untouched
+        // until effective_at. Enforcement is automatic — the client's next
+        // validate/heartbeat after effective_at sees the in-effect revocation.
+        AuditLog::record('license.revoke_scheduled', 'license', $license->id, [
             'reason' => $validated['reason'],
-            'affected_activations' => $affectedActivations,
+            'effective_at' => $effectiveAt->toISOString(),
+            'delay_minutes' => $delayMinutes,
         ]);
 
         return response()->json([
             'data' => [
                 'license_id' => $license->id,
-                'status' => 'revoked',
-                'revoked_at' => now()->toISOString(),
-                'affected_activations' => $affectedActivations,
+                'status' => $license->status,
+                'scheduled' => true,
+                'revocation_id' => $revocation->id,
+                'effective_at' => $effectiveAt->toISOString(),
+            ],
+        ]);
+    }
+
+    /**
+     * Cancel a scheduled (not-yet-effective) revoke before it takes effect.
+     */
+    public function cancelRevoke(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'license_id' => ['required', 'uuid', 'exists:licenses,id'],
+        ]);
+
+        $license = License::findOrFail($validated['license_id']);
+        $pending = $license->pendingRevocation()->first();
+
+        if (! $pending) {
+            return response()->json([
+                'error' => 'no_pending_revocation',
+                'message' => 'This license has no scheduled revoke to cancel.',
+            ], 404);
+        }
+
+        $pending->update([
+            'cancelled_at' => now(),
+            'cancelled_by' => auth()->id(),
+        ]);
+
+        AuditLog::record('license.revoke_cancelled', 'license', $license->id, [
+            'revocation_id' => $pending->id,
+            'was_effective_at' => $pending->effective_at?->toISOString(),
+        ]);
+
+        return response()->json([
+            'data' => [
+                'license_id' => $license->id,
+                'status' => $license->status,
+                'cancelled_revocation_id' => $pending->id,
             ],
         ]);
     }

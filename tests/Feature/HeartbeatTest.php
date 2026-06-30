@@ -40,7 +40,7 @@ class HeartbeatTest extends TestCase
             'org_id' => $this->organization->id,
             'client_id' => 'test-client-id',
             'client_secret_hash' => Hash::make($this->plainClientSecret),
-            'allowed_scopes' => ['licensing:heartbeat'],
+            'allowed_scopes' => ['license:heartbeat'],
             'is_active' => true,
         ]);
 
@@ -60,7 +60,7 @@ class HeartbeatTest extends TestCase
         // Create an active activation
         $this->activation = LicenseActivation::create([
             'license_id' => $this->license->id,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'hostname' => 'test-machine',
             'activated_at' => now(),
             'last_seen_at' => now()->subHours(24),
@@ -83,7 +83,7 @@ class HeartbeatTest extends TestCase
         sleep(1);
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(200)
@@ -109,7 +109,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'active_users' => 5,
             'feature_usage' => [
                 'audit_trails_generated' => 150,
@@ -134,7 +134,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'active_users' => 3,
         ], $this->heartbeatHeaders());
 
@@ -155,14 +155,14 @@ class HeartbeatTest extends TestCase
         RevocationList::create([
             'license_id' => $this->license->id,
             'reason' => 'test-revocation',
-            'revoked_by' => null,
+            'revoked_by' => \Illuminate\Support\Str::uuid()->toString(),
             'revoked_at' => now(),
             'effective_at' => now(),
         ]);
 
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(200)
@@ -179,7 +179,7 @@ class HeartbeatTest extends TestCase
 
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(200)
@@ -190,7 +190,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(200);
@@ -202,7 +202,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(200);
@@ -214,7 +214,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(200)
@@ -232,7 +232,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => 'APGRC-NOPE-9999-9999-9999',
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(404)
@@ -243,7 +243,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-nonexistent',
+            'device_fingerprint' => hash('sha256', 'device-nonexistent'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(404)
@@ -260,7 +260,7 @@ class HeartbeatTest extends TestCase
 
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(404)
@@ -271,7 +271,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(200);
@@ -285,7 +285,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ]); // No headers
 
         $response->assertStatus(401)
@@ -302,14 +302,14 @@ class HeartbeatTest extends TestCase
         RevocationList::create([
             'license_id' => $this->license->id,
             'reason' => 'test-revocation',
-            'revoked_by' => null,
+            'revoked_by' => \Illuminate\Support\Str::uuid()->toString(),
             'revoked_at' => now(),
             'effective_at' => now(),
         ]);
 
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
         ], $this->heartbeatHeaders());
 
         $response->assertStatus(200);
@@ -324,7 +324,7 @@ class HeartbeatTest extends TestCase
     {
         $response = $this->postJson('/api/v1/licenses/heartbeat', [
             'license_key' => $this->license->license_key,
-            'device_fingerprint' => 'device-abc123',
+            'device_fingerprint' => hash('sha256', 'device-abc123'),
             'app_version' => '1.2.3',
             'active_users' => 2,
         ], $this->heartbeatHeaders());

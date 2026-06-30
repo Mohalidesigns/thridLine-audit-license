@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\RevocationList;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class LicenseManagementTest extends TestCase
@@ -38,12 +39,14 @@ class LicenseManagementTest extends TestCase
             'country' => 'NG',
         ]);
 
-        // Create admin user
+        // Create admin user with full permissions (admin routes are RBAC-gated).
+        $this->seed(\Database\Seeders\RolesAndPermissionsSeeder::class);
         $this->adminUser = User::factory()->create([
             'email' => 'admin@test.com',
             'name' => 'Admin User',
             'is_active' => true,
         ]);
+        $this->adminUser->assignRole('super-admin');
 
         // Create a valid license
         $this->license = License::create([
@@ -62,7 +65,12 @@ class LicenseManagementTest extends TestCase
 
     private function authenticateAs(User $user): self
     {
-        return $this->actingAs($user, 'sanctum');
+        // Attach a Sanctum token scoped to the user's permissions, mirroring
+        // AuthController::login — so both the RBAC (can) and token-ability
+        // (tokenCan) checks in EnsurePermission are satisfied.
+        Sanctum::actingAs($user, $user->getAllPermissions()->pluck('name')->all() ?: ['*'], 'sanctum');
+
+        return $this;
     }
 
     // License Creation Tests
@@ -149,13 +157,13 @@ class LicenseManagementTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'data' => [
-                    ['*' => [
+                    '*' => [
                         'id',
                         'license_key',
                         'plan',
                         'status',
                         'organization',
-                    ]],
+                    ],
                 ],
                 'meta',
                 'links',
@@ -351,6 +359,7 @@ class LicenseManagementTest extends TestCase
             ->postJson('/api/v1/licenses/revoke', [
                 'license_id' => $this->license->id,
                 'reason' => 'Customer request',
+                'confirm_license_key' => $this->license->license_key,
                 'effective_immediately' => true,
             ]);
 
@@ -399,6 +408,7 @@ class LicenseManagementTest extends TestCase
             ->postJson('/api/v1/licenses/revoke', [
                 'license_id' => $this->license->id,
                 'reason' => 'Test revoke',
+                'confirm_license_key' => $this->license->license_key,
                 'effective_immediately' => true,
             ]);
 
@@ -421,6 +431,7 @@ class LicenseManagementTest extends TestCase
             ->postJson('/api/v1/licenses/revoke', [
                 'license_id' => $this->license->id,
                 'reason' => 'Test',
+                'confirm_license_key' => $this->license->license_key,
                 'effective_immediately' => true,
             ]);
 

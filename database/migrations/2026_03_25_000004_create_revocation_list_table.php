@@ -13,7 +13,7 @@ return new class extends Migration
             $table->foreignUuid('license_id')->constrained('licenses')->cascadeOnDelete();
             $table->string('reason');
             $table->uuid('revoked_by');
-            $table->timestamp('revoked_at');
+            $table->dateTime('revoked_at');
             $table->timestamp('effective_at')->nullable();
             $table->timestamps();
 

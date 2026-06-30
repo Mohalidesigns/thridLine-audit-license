@@ -18,6 +18,7 @@ class License extends Model
         'org_id',
         'license_key',
         'plan',
+        'type',
         'features',
         'max_users',
         'max_activations',
@@ -64,6 +65,15 @@ class License extends Model
         return $this->hasMany(RevocationList::class);
     }
 
+    /**
+     * The latest scheduled revoke still waiting to take effect (if any).
+     * Drives the "revoke scheduled" badge + cancel action in the admin portal.
+     */
+    public function pendingRevocation(): HasOne
+    {
+        return $this->hasOne(RevocationList::class)->pending()->latest('revoked_at');
+    }
+
     public function usageMetrics(): HasMany
     {
         return $this->hasMany(LicenseUsageMetric::class);
@@ -79,8 +89,41 @@ class License extends Model
         return $this->status === 'revoked';
     }
 
+    /**
+     * True if the license is revoked by status OR carries a revocation that is
+     * already in effect (covers scheduled revokes whose effective time has
+     * passed but whose status flip the apply-revocations command hasn't run
+     * yet). This is the authoritative client-facing revocation check.
+     */
+    public function isEffectivelyRevoked(): bool
+    {
+        return $this->status === 'revoked'
+            || $this->revocations()->inEffect()->exists();
+    }
+
     public function isActive(): bool
     {
         return $this->status === 'active' && !$this->isExpired();
+    }
+
+    /**
+     * Whether this license is a time-boxed evaluation type (trial/demo/poc).
+     */
+    public function isTrialType(): bool
+    {
+        return (bool) config('licensing.types.' . ($this->type ?? 'full') . '.trial', false);
+    }
+
+    /**
+     * Per-plan grace window in days (used after expiry). Falls back to the
+     * global default. This is the single source of truth for grace duration
+     * across activate/heartbeat responses.
+     */
+    public function gracePeriodDays(): int
+    {
+        return (int) config(
+            'licensing.plans.' . $this->plan . '.grace_days',
+            config('licensing.grace_period_days', 7),
+        );
     }
 }

@@ -14,6 +14,13 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(RolesAndPermissionsSeeder::class);
 
+        // Default demo accounts use a well-known password — never seed them in
+        // production unless explicitly opted in via SEED_DEMO_USERS=true.
+        if (app()->environment('production') && !env('SEED_DEMO_USERS', false)) {
+            $this->command?->warn('Skipping demo user seeding in production (set SEED_DEMO_USERS=true to override).');
+            return;
+        }
+
         // Create super-admin user
         $superAdmin = User::factory()->create([
             'name' => 'Super Admin',

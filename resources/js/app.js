@@ -31,6 +31,28 @@ Alpine.store('auth', {
         this.token = null;
     },
 
+    // Confirm a persisted token is still valid against the server.
+    // Returns false (and clears the session) only on a definitive 401 —
+    // network/other errors keep the session so a transient outage doesn't
+    // log the admin out.
+    async verify() {
+        if (!this.token) return false;
+        try {
+            const res = await fetch('/api/v1/auth/me', { headers: this.headers });
+            if (res.status === 401) {
+                this.clear();
+                return false;
+            }
+            if (res.ok) {
+                const json = await res.json().catch(() => null);
+                if (json?.data) this.user = json.data;
+            }
+            return true;
+        } catch (e) {
+            return true;
+        }
+    },
+
     hasRole(role) {
         return this.user?.roles?.includes(role) ?? false;
     },
