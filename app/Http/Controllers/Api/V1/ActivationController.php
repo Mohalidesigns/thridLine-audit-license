@@ -4,18 +4,54 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ActivateLicenseRequest;
+use App\Http\Requests\DeactivateLicenseRequest;
 use App\Http\Requests\ValidateLicenseRequest;
+use App\Models\ApiClient;
 use App\Models\AuditLog;
 use App\Models\License;
 use App\Models\LicenseActivation;
 use App\Services\Licensing\LicenseEngine;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ActivationController extends Controller
 {
     public function __construct(
         private readonly LicenseEngine $engine,
     ) {}
+
+    /**
+     * Resolve the authenticated API client attached by AuthenticateApiClient middleware.
+     */
+    private function apiClient(Request $request): ?ApiClient
+    {
+        $client = $request->input('api_client');
+        return $client instanceof ApiClient ? $client : null;
+    }
+
+    /**
+     * Enforce that the license belongs to the same org as the API client.
+     * Returns a JsonResponse to short-circuit the controller, or null when OK.
+     */
+    private function assertSameTenant(License $license, ?ApiClient $client, string $action): ?JsonResponse
+    {
+        if (!$client || $license->org_id !== $client->org_id) {
+            AuditLog::record('tenant_mismatch.detected', 'license', $license->id, [
+                'action' => $action,
+                'license_org_id' => $license->org_id,
+                'api_client_org_id' => $client?->org_id,
+                'api_client_id' => $client?->id,
+            ], 'client_app', $client?->id);
+
+            return response()->json([
+                'error' => 'tenant_mismatch',
+                'message' => 'This license does not belong to your organization.',
+            ], 403);
+        }
+
+        return null;
+    }
 
     public function activate(ActivateLicenseRequest $request): JsonResponse
     {
@@ -33,6 +69,10 @@ class ActivationController extends Controller
                 'error' => 'license_not_found',
                 'message' => 'No license found with the provided key.',
             ], 404);
+        }
+
+        if ($mismatch = $this->assertSameTenant($license, $this->apiClient($request), 'activate')) {
+            return $mismatch;
         }
 
         if ($license->isEffectivelyRevoked()) {
@@ -66,72 +106,93 @@ class ActivationController extends Controller
 
         if ($existing) {
             $existing->update(['last_seen_at' => now()]);
-            $token = $this->engine->generateToken($license);
+            $token = $this->engine->generateToken($license, $validated['device_fingerprint']);
 
             return response()->json([
                 'data' => [
                     'activation_id' => $existing->id,
                     'license_token' => $token,
                     'activated_at' => $existing->activated_at->toISOString(),
-                    'entitlements' => [
-                        'features' => $license->features,
-                        'max_users' => $license->max_users,
-                        'expires_at' => $license->expires_at->toISOString(),
-                    ],
+                    'entitlements' => $this->entitlements($license),
                     'heartbeat_interval_hours' => config('licensing.heartbeat_interval_hours'),
-                    'grace_period_days' => config('licensing.grace_period_days'),
+                    'grace_period_days' => $license->gracePeriodDays(),
                 ],
             ]);
         }
 
-        // Check max activations
-        $activeCount = $license->activeActivations()->count();
-        if ($activeCount >= $license->max_activations) {
+        // Enforce max_activations under a row lock so two concurrent activations
+        // for different devices can't both pass the count check and overshoot the
+        // ceiling (TOCTOU). Both requests serialize on the license row, so the
+        // second one sees the first one's insert before re-counting.
+        $activation = DB::transaction(function () use ($license, $validated, $request) {
+            // Acquire an exclusive lock on the license row for this transaction.
+            License::whereKey($license->id)->lockForUpdate()->first();
+
+            $activeCount = $license->activeActivations()->count();
+            if ($activeCount >= $license->max_activations) {
+                return ['limit_reached' => true, 'current_activations' => $activeCount];
+            }
+
+            return LicenseActivation::create([
+                'license_id' => $license->id,
+                'device_fingerprint' => $validated['device_fingerprint'],
+                'hostname' => $validated['hostname'] ?? null,
+                'ip_address' => $validated['ip_address'] ?? $request->ip(),
+                'os_info' => $validated['os_info'] ?? null,
+                'activated_at' => now(),
+                'last_seen_at' => now(),
+                'status' => 'active',
+            ]);
+        });
+
+        if (is_array($activation)) {
             AuditLog::record('activation.limit_reached', 'license', $license->id, [
-                'current_activations' => $activeCount,
+                'current_activations' => $activation['current_activations'],
                 'max_activations' => $license->max_activations,
             ], 'client_app');
 
             return response()->json([
                 'error' => 'activation_limit_reached',
                 'message' => "Maximum activations ({$license->max_activations}) reached for this license.",
-                'current_activations' => $activeCount,
+                'current_activations' => $activation['current_activations'],
             ], 409);
         }
 
-        $activation = LicenseActivation::create([
-            'license_id' => $license->id,
-            'device_fingerprint' => $validated['device_fingerprint'],
-            'hostname' => $validated['hostname'] ?? null,
-            'ip_address' => $validated['ip_address'] ?? $request->ip(),
-            'os_info' => $validated['os_info'] ?? null,
-            'activated_at' => now(),
-            'last_seen_at' => now(),
-            'status' => 'active',
-        ]);
-
-        $token = $this->engine->generateToken($license);
+        $token = $this->engine->generateToken($license, $validated['device_fingerprint']);
 
         AuditLog::record('license.activated', 'activation', $activation->id, [
             'license_id' => $license->id,
             'device_fingerprint' => $validated['device_fingerprint'],
             'hostname' => $validated['hostname'] ?? null,
-        ], 'client_app');
+        ], 'client_app', $this->apiClient($request)?->id);
 
         return response()->json([
             'data' => [
                 'activation_id' => $activation->id,
                 'license_token' => $token,
                 'activated_at' => $activation->activated_at->toISOString(),
-                'entitlements' => [
-                    'features' => $license->features,
-                    'max_users' => $license->max_users,
-                    'expires_at' => $license->expires_at->toISOString(),
-                ],
+                'entitlements' => $this->entitlements($license),
                 'heartbeat_interval_hours' => config('licensing.heartbeat_interval_hours'),
-                'grace_period_days' => config('licensing.grace_period_days'),
+                'grace_period_days' => $license->gracePeriodDays(),
             ],
         ]);
+    }
+
+    /**
+     * Shared entitlements block returned by activate/validate. Includes the
+     * license type (full|trial|demo|poc|grace) and a derived is_trial flag so
+     * the consumer can surface evaluation banners without re-deriving config.
+     */
+    private function entitlements(License $license): array
+    {
+        return [
+            'features' => $license->features,
+            'max_users' => $license->max_users,
+            'plan' => $license->plan,
+            'type' => $license->type ?? 'full',
+            'is_trial' => $license->isTrialType(),
+            'expires_at' => $license->expires_at->toISOString(),
+        ];
     }
 
     public function validate(ValidateLicenseRequest $request): JsonResponse
@@ -145,6 +206,10 @@ class ActivationController extends Controller
                 'error' => 'license_not_found',
                 'message' => 'No license found with the provided key.',
             ], 404);
+        }
+
+        if ($mismatch = $this->assertSameTenant($license, $this->apiClient($request), 'validate')) {
+            return $mismatch;
         }
 
         // Check revocation (status flag OR an in-effect revocation row;
@@ -212,20 +277,17 @@ class ActivationController extends Controller
         AuditLog::record('validation.success', 'license', $license->id, [
             'device_fingerprint' => $validated['device_fingerprint'],
             'current_users' => $currentUsers,
-        ], 'client_app');
+        ], 'client_app', $this->apiClient($request)?->id);
 
         return response()->json([
             'data' => [
                 'valid' => true,
                 'status' => $license->status,
-                'entitlements' => [
-                    'features' => $license->features,
-                    'max_users' => $license->max_users,
-                    'plan' => $license->plan,
-                ],
+                'license_key' => $license->license_key,
+                'entitlements' => $this->entitlements($license),
                 'revoked' => false,
                 'expires_at' => $license->expires_at->toISOString(),
-                'days_remaining' => now()->diffInDays($license->expires_at, false),
+                'days_remaining' => (int) now()->diffInDays($license->expires_at, false),
                 'server_time' => now()->toISOString(),
             ],
         ]);
@@ -234,12 +296,9 @@ class ActivationController extends Controller
     /**
      * Deactivate a license activation (client-initiated).
      */
-    public function deactivate(Request $request): JsonResponse
+    public function deactivate(DeactivateLicenseRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'license_key' => ['required', 'string'],
-            'device_fingerprint' => ['required', 'string'],
-        ]);
+        $validated = $request->validated();
 
         $license = License::where('license_key', $validated['license_key'])->first();
 
@@ -248,6 +307,10 @@ class ActivationController extends Controller
                 'error' => 'license_not_found',
                 'message' => 'No license found with the provided key.',
             ], 404);
+        }
+
+        if ($mismatch = $this->assertSameTenant($license, $this->apiClient($request), 'deactivate')) {
+            return $mismatch;
         }
 
         $activation = LicenseActivation::where('license_id', $license->id)
@@ -271,7 +334,7 @@ class ActivationController extends Controller
             'license_id' => $license->id,
             'device_fingerprint' => $validated['device_fingerprint'],
             'initiated_by' => 'client',
-        ], 'client_app');
+        ], 'client_app', $this->apiClient($request)?->id);
 
         return response()->json([
             'data' => [

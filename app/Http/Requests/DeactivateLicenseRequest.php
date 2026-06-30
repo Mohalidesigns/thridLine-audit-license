@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class ActivateLicenseRequest extends FormRequest
+class DeactivateLicenseRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -15,12 +15,7 @@ class ActivateLicenseRequest extends FormRequest
     {
         return [
             'license_key' => ['required', 'string', 'regex:/^APGRC-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/'],
-            // sha256 hex (64 chars), with an optional "sha256:" prefix as emitted
-            // by the ThirdLine consumer's DeviceFingerprint::generate().
             'device_fingerprint' => ['required', 'string', 'regex:/^(sha256:)?[a-f0-9]{64}$/i'],
-            'hostname' => ['nullable', 'string', 'max:255'],
-            'ip_address' => ['nullable', 'ip'],
-            'os_info' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

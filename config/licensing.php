@@ -12,6 +12,24 @@ return [
     'heartbeat_interval_hours' => 48,
     'max_clock_drift_seconds' => 300,
 
+    /*
+    |--------------------------------------------------------------------------
+    | License types
+    |--------------------------------------------------------------------------
+    | Orthogonal to "plan" (which is the entitlement tier). "type" is the
+    | issuance intent of a license. Each type carries a default duration used
+    | when an explicit duration_days is not supplied at issue time, and a
+    | "trial" flag the consumer can surface in its UI (e.g. a countdown banner).
+    */
+    'default_type' => 'full',
+    'types' => [
+        'full'  => ['label' => 'Full License',     'default_duration_days' => 365, 'trial' => false],
+        'trial' => ['label' => 'Trial',            'default_duration_days' => 14,  'trial' => true],
+        'demo'  => ['label' => 'Demo',             'default_duration_days' => 7,   'trial' => true],
+        'poc'   => ['label' => 'Proof of Concept', 'default_duration_days' => 30,  'trial' => true],
+        'grace' => ['label' => 'Grace Period',     'default_duration_days' => 14,  'trial' => false],
+    ],
+
     'plans' => [
         'starter' => [
             'max_users' => 5,

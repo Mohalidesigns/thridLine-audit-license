@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AuthenticateApiClient;
+use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\IpAllowlist;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -17,13 +18,17 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'api.client' => AuthenticateApiClient::class,
             'ip.allowlist' => IpAllowlist::class,
+            'perm' => EnsurePermission::class,
         ]);
 
-        $middleware->statefulApi();
+        // The admin SPA authenticates with bearer tokens (Sanctum personal access
+        // tokens), not session cookies — so we intentionally do NOT enable
+        // statefulApi(). Enabling it would apply session + CSRF to /api/v1/*,
+        // and the token-based fetch() calls (no X-XSRF-TOKEN) would get 419s.
 
         // Behind the host nginx reverse proxy (localhost-bound container); honor
         // X-Forwarded-* so Laravel knows requests arrive over HTTPS. Only the host
-        // proxy can reach 127.0.0.1:8088, so trusting all forwarded headers is safe.
+        // proxy can reach the container, so trusting all forwarded headers is safe.
         $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {

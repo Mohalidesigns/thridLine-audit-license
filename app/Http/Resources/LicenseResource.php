@@ -13,6 +13,8 @@ class LicenseResource extends JsonResource
             'id' => $this->id,
             'license_key' => $this->license_key,
             'plan' => $this->plan,
+            'type' => $this->type,
+            'is_trial' => $this->isTrialType(),
             'features' => $this->features,
             'max_users' => $this->max_users,
             'max_activations' => $this->max_activations,
