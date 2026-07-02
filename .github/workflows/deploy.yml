@@ -1,4 +1,4 @@
-name: Deploy to cPanel via SSH
+name: Deploy to VPS (Docker)
 
 on:
   push:
@@ -8,48 +8,60 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    name: Deploy License Server to cPanel
+    name: Deploy License Server (Docker) to VPS
+    # Build (composer + vite) happens on the VPS via `up --build`; allow time.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: mbstring, pdo, pdo_mysql, xml, curl, zip
-          coverage: none
-
-      - name: Install Composer dependencies
-        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
-
-      - name: Deploy via SSH (rsync)
+      # Sync the repo source into /opt/thirdline-license on the VPS.
+      # .env holds production secrets and lives ONLY on the server (never in git);
+      # node_modules/vendor are built inside the image, not shipped.
+      - name: Sync source to VPS (rsync)
         uses: easingthemes/ssh-deploy@main
         with:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          ARGS: "-rlgoDzvc --delete"
+          ARGS: "-rlptDzvc --delete"
           SOURCE: "./"
           REMOTE_HOST: ${{ secrets.SSH_HOST }}
           REMOTE_USER: ${{ secrets.SSH_USERNAME }}
           REMOTE_PORT: ${{ secrets.SSH_PORT }}
-          TARGET: "/home/atheunqg/public_html/LicenseServer"
-          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /.env.example"
+          TARGET: "/opt/thirdline-license"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /vendor/, /.env, /.env.example"
 
-      - name: Post-deploy setup via SSH
+      # Rebuild + restart the stack, then run migrations inside the app container.
+      - name: Build, restart, migrate (docker compose)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: "20m"
           script: |
-            cd /home/atheunqg/public_html/LicenseServer
+            set -e
+            cd /opt/thirdline-license
+
+            # Production secrets must already exist on the server (kept out of git).
             if [ ! -f .env ]; then
-              cp .env.example .env
-              php artisan key:generate
+              echo "ERROR: /opt/thirdline-license/.env is missing. Create it from"
+              echo ".env.docker.example (APP_KEY, DB_* for the postgres service, LICENSE_*)"
+              echo "before deploying." >&2
+              exit 1
             fi
-            php artisan config:cache
-            php artisan route:cache
-            php artisan migrate --force
-            chmod -R 755 storage bootstrap/cache
+
+            # Rebuild images with the new source and restart in place.
+            docker compose up -d --build --remove-orphans
+
+            # Give php-fpm a moment, then run schema migrations + cache warmup
+            # inside the app container (the entrypoint does keys+dirs, not migrate).
+            sleep 5
+            docker compose exec -T app php artisan migrate --force
+            docker compose exec -T app php artisan optimize
+            docker compose exec -T app php artisan storage:link || true
+
+            # Reclaim disk from superseded image layers.
+            docker image prune -f
+            docker compose ps
