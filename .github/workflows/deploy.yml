@@ -16,20 +16,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Sync the repo source into /opt/thirdline-license on the VPS.
-      # .env holds production secrets and lives ONLY on the server (never in git);
-      # node_modules/vendor are built inside the image, not shipped.
-      - name: Sync source to VPS (rsync)
-        uses: easingthemes/ssh-deploy@main
-        with:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          ARGS: "-rlptDzvc --delete"
-          SOURCE: "./"
-          REMOTE_HOST: ${{ secrets.SSH_HOST }}
-          REMOTE_USER: ${{ secrets.SSH_USERNAME }}
-          REMOTE_PORT: ${{ secrets.SSH_PORT }}
-          TARGET: "/opt/thirdline-license"
-          EXCLUDE: "/.git/, /.github/, /node_modules/, /vendor/, /.env, /.env.example"
+      # Sync the repo source into /opt/thirdline-license on the VPS using
+      # PASSWORD auth (sshpass + rsync). .env holds prod secrets and lives ONLY
+      # on the server; node_modules/vendor are built inside the image.
+      - name: Sync source to VPS (rsync over password)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+          sshpass -p "$SSH_PASSWORD" rsync -rlptDzvc --delete \
+            -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            --exclude=/.git/ --exclude=/.github/ --exclude=/node_modules/ \
+            --exclude=/vendor/ --exclude=/.env --exclude=/.env.example \
+            ./ "$SSH_USERNAME@$SSH_HOST:/opt/thirdline-license"
 
       # Rebuild + restart the stack, then run migrations inside the app container.
       - name: Build, restart, migrate (docker compose)
@@ -37,7 +39,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           command_timeout: "20m"
           script: |
