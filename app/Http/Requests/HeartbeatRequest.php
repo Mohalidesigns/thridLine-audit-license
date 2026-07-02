@@ -19,7 +19,9 @@ class HeartbeatRequest extends FormRequest
             'active_users' => ['nullable', 'integer', 'min:0'],
             'feature_usage' => ['nullable', 'array'],
             'feature_usage.*' => ['integer', 'min:0'],
-            'app_version' => ['nullable', 'string', 'max:20'],
+            'app_version' => ['nullable', 'string', 'max:50'],
+            'domain' => ['nullable', 'string', 'max:255'],
+            'app_env' => ['nullable', 'string', 'max:20'],
         ];
     }
 }

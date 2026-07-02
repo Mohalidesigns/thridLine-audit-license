@@ -53,8 +53,14 @@ class HeartbeatController extends Controller
             ], 404);
         }
 
-        // Update last seen
-        $activation->update(['last_seen_at' => now()]);
+        // Liveness + deployment metadata (version/domain/env drift shows up in
+        // the admin Deployments view without waiting for a re-activation).
+        $activation->update(array_filter([
+            'last_seen_at' => now(),
+            'app_version' => $validated['app_version'] ?? null,
+            'domain' => $validated['domain'] ?? null,
+            'app_env' => $validated['app_env'] ?? null,
+        ], fn ($v) => $v !== null));
 
         // Record usage metrics if provided
         if (isset($validated['active_users']) || isset($validated['feature_usage'])) {
