@@ -21,6 +21,10 @@ class ActivateLicenseRequest extends FormRequest
             'hostname' => ['nullable', 'string', 'max:255'],
             'ip_address' => ['nullable', 'ip'],
             'os_info' => ['nullable', 'string', 'max:255'],
+            // Deployment registry metadata (see admin Deployments view).
+            'domain' => ['nullable', 'string', 'max:255'],
+            'app_version' => ['nullable', 'string', 'max:50'],
+            'app_env' => ['nullable', 'string', 'max:20'],
         ];
     }
 }

@@ -90,6 +90,9 @@
                     <template x-if="currentPage === 'api-clients'">
                         @include('pages.api-clients')
                     </template>
+                    <template x-if="currentPage === 'deployments'">
+                        @include('pages.deployments')
+                    </template>
                     <template x-if="currentPage === 'audit-logs'">
                         @include('pages.audit-logs')
                     </template>

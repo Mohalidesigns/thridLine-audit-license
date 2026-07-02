@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\ApiClientController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\DeploymentController;
 use App\Http\Controllers\Api\V1\HeartbeatController;
 use App\Http\Controllers\Api\V1\LicenseController;
 use App\Http\Controllers\Api\V1\OrganizationController;
@@ -82,6 +83,10 @@ Route::prefix('v1')->group(function () {
         Route::post('api-clients', [ApiClientController::class, 'store'])->middleware('perm:api-clients.create');
         Route::put('api-clients/{apiClient}', [ApiClientController::class, 'update'])->middleware('perm:api-clients.update');
         Route::post('api-clients/{apiClient}/regenerate-secret', [ApiClientController::class, 'regenerateSecret'])->middleware('perm:api-clients.regenerate-secret');
+
+        // Deployments (fleet registry: every activation + health/heartbeat)
+        Route::get('deployments', [DeploymentController::class, 'index'])->middleware('perm:licenses.view');
+        Route::get('deployments/{activation}/heartbeats', [DeploymentController::class, 'heartbeats'])->middleware('perm:licenses.view');
 
         // Audit Logs
         Route::get('audit-logs', [AuditLogController::class, 'index'])->middleware('perm:audit-logs.view');

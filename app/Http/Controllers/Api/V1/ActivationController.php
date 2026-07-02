@@ -105,7 +105,14 @@ class ActivationController extends Controller
             ->first();
 
         if ($existing) {
-            $existing->update(['last_seen_at' => now()]);
+            // Refresh deployment metadata on re-activation (version upgrades,
+            // domain moves) alongside the liveness timestamp.
+            $existing->update(array_filter([
+                'last_seen_at' => now(),
+                'domain' => $validated['domain'] ?? null,
+                'app_version' => $validated['app_version'] ?? null,
+                'app_env' => $validated['app_env'] ?? null,
+            ], fn ($v) => $v !== null));
             $token = $this->engine->generateToken($license, $validated['device_fingerprint']);
 
             return response()->json([
@@ -137,8 +144,11 @@ class ActivationController extends Controller
                 'license_id' => $license->id,
                 'device_fingerprint' => $validated['device_fingerprint'],
                 'hostname' => $validated['hostname'] ?? null,
+                'domain' => $validated['domain'] ?? null,
                 'ip_address' => $validated['ip_address'] ?? $request->ip(),
                 'os_info' => $validated['os_info'] ?? null,
+                'app_version' => $validated['app_version'] ?? null,
+                'app_env' => $validated['app_env'] ?? null,
                 'activated_at' => now(),
                 'last_seen_at' => now(),
                 'status' => 'active',

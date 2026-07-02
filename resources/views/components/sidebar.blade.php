@@ -67,6 +67,18 @@
             <span x-show="sidebarOpen" x-transition class="whitespace-nowrap">API Clients</span>
         </a>
 
+        {{-- Deployments --}}
+        <a href="#/deployments" @click="currentPage = 'deployments'"
+           class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative"
+           :class="currentPage === 'deployments' ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'">
+            <div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-opacity"
+                 :class="currentPage === 'deployments' ? 'opacity-100' : 'opacity-0'"></div>
+            <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m9-9H3m14.25-6.75L6.75 17.25m10.5 0L6.75 6.75"/>
+            </svg>
+            <span x-show="sidebarOpen" x-transition class="whitespace-nowrap">Deployments</span>
+        </a>
+
         {{-- Audit Logs --}}
         <a href="#/audit-logs" @click="currentPage = 'audit-logs'"
            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative"
