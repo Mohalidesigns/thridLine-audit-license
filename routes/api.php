@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DeploymentController;
 use App\Http\Controllers\Api\V1\HeartbeatController;
 use App\Http\Controllers\Api\V1\LicenseController;
+use App\Http\Controllers\Api\V1\OnboardingController;
 use App\Http\Controllers\Api\V1\OrganizationController;
 use Illuminate\Support\Facades\Route;
 
@@ -56,6 +57,9 @@ Route::prefix('v1')->group(function () {
         // Dashboard
         Route::get('dashboard/stats', [DashboardController::class, 'stats'])->middleware('perm:dashboard.view');
         Route::get('dashboard/recent-activity', [DashboardController::class, 'recentActivity'])->middleware('perm:dashboard.view');
+
+        // Onboarding (org + API client + license in one call)
+        Route::post('onboarding', [OnboardingController::class, 'store'])->middleware('perm:api-clients.create');
 
         // Organizations
         Route::get('organizations', [OrganizationController::class, 'index'])->middleware('perm:organizations.view');

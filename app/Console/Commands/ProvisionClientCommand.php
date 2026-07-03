@@ -2,15 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\ApiClient;
-use App\Models\AuditLog;
-use App\Models\License;
 use App\Models\Organization;
-use App\Services\Licensing\LicenseEngine;
+use App\Services\Licensing\OnboardingService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 /**
  * Provision a consuming application (organization + API client) so it can talk
@@ -55,6 +49,12 @@ class ProvisionClientCommand extends Command
 
     protected $description = 'Provision an organization + API client (and optionally a license) for a consuming application and emit credentials once.';
 
+    public function __construct(
+        private readonly OnboardingService $onboarder,
+    ) {
+        parent::__construct();
+    }
+
     public function handle(): int
     {
         $slug = (string) $this->option('org-slug');
@@ -85,111 +85,57 @@ class ProvisionClientCommand extends Command
             }
         }
 
-        return DB::transaction(function () use ($slug, $scopes, $ips, $plan, $type) {
-            $org = Organization::where('slug', $slug)->first();
+        // A new org needs name + email; an existing one (by slug) is reused.
+        $existing = Organization::where('slug', $slug)->first();
+        $name = (string) $this->option('org-name');
+        $email = (string) $this->option('contact-email');
+        if (!$existing && ($name === '' || $email === '')) {
+            $this->error('Organization not found by slug. To create it, provide both --org-name and --contact-email.');
+            return self::FAILURE;
+        }
 
-            if (!$org) {
-                $name  = (string) $this->option('org-name');
-                $email = (string) $this->option('contact-email');
+        $result = $this->onboarder->onboard([
+            'org_slug'        => $slug,
+            'org_name'        => $name ?: $slug,
+            'contact_email'   => $email,
+            'industry'        => $this->option('industry') ?: null,
+            'country'         => (string) ($this->option('country') ?: 'NG'),
+            'scopes'          => $scopes,
+            'ips'             => $ips,
+            'issue_license'   => (bool) $this->option('issue-license'),
+            'plan'            => $plan,
+            'type'            => $type,
+            'duration_days'   => $this->option('duration-days') ? (int) $this->option('duration-days') : null,
+            'max_users'       => $this->option('max-users') ? (int) $this->option('max-users') : null,
+            'max_activations' => $this->option('max-activations') ? (int) $this->option('max-activations') : null,
+            'actor_type'      => 'system',
+        ]);
 
-                if ($name === '' || $email === '') {
-                    $this->error('Organization not found by slug. To create it, provide both --org-name and --contact-email.');
-                    return self::FAILURE;
-                }
+        $this->info(($existing ? 'Reused' : 'Created') . " organization {$result['organization']->id} ({$result['organization']->slug}).");
+        if ($result['license']) {
+            $lic = $result['license'];
+            $this->info("Issued {$lic->type} {$lic->plan} license {$lic->license_key} (expires {$lic->expires_at->toDateString()}).");
+        }
 
-                $org = Organization::create([
-                    'name'          => $name,
-                    'slug'          => $slug,
-                    'contact_email' => $email,
-                    'industry'      => $this->option('industry') ?: null,
-                    'country'       => (string) ($this->option('country') ?: 'NG'),
-                ]);
+        $envBlock = $this->onboarder->envSnippet($result, $this->option('server-url') ?: null);
 
-                $this->info("Created organization {$org->id} ({$org->slug}).");
-            } else {
-                $this->info("Reusing existing organization {$org->id} ({$org->slug}).");
-            }
+        $dir = storage_path('app/provisioned-clients');
+        if (!is_dir($dir)) {
+            mkdir($dir, 0700, true);
+        }
+        $path = $dir . DIRECTORY_SEPARATOR . $slug . '.env';
+        file_put_contents($path, $envBlock);
+        @chmod($path, 0600);
 
-            // Always mint a fresh credential pair so a re-run rotates secrets.
-            $clientId     = 'tlc_' . Str::lower(Str::random(24));
-            $clientSecret = 'sk_' . Str::lower(Str::random(48));
+        $this->newLine();
+        $this->line('────────────────────────────────────────────────────────');
+        $this->info('API client provisioned. Credentials shown ONCE — store them now.');
+        $this->line('────────────────────────────────────────────────────────');
+        $this->line($envBlock);
+        $this->line('Snippet also written to: ' . $path);
+        $this->line('Paste the LICENSE_* lines into the consuming app\'s .env, then restart it.');
+        $this->newLine();
 
-            $client = ApiClient::create([
-                'org_id'             => $org->id,
-                'client_id'          => $clientId,
-                'client_secret_hash' => Hash::make($clientSecret),
-                'allowed_scopes'     => $scopes,
-                'allowed_ips'        => $ips ?: null,
-                'is_active'          => true,
-            ]);
-
-            AuditLog::record('api_client.provisioned', 'api_client', $client->id, [
-                'org_id'  => $org->id,
-                'scopes'  => $scopes,
-                'ips'     => $ips,
-                'via'     => 'cli',
-            ], 'system');
-
-            // Optionally issue a license in the same transaction (one-shot onboarding).
-            $license = null;
-            if ($this->option('issue-license')) {
-                $planConfig   = config("licensing.plans.{$plan}");
-                $durationDays = (int) ($this->option('duration-days')
-                    ?: config("licensing.types.{$type}.default_duration_days", config('licensing.ttl', 365)));
-
-                $license = License::create([
-                    'org_id'          => $org->id,
-                    'license_key'     => app(LicenseEngine::class)->generateLicenseKey(),
-                    'plan'            => $plan,
-                    'type'            => $type,
-                    'features'        => $planConfig['features'],
-                    'max_users'       => (int) ($this->option('max-users') ?: $planConfig['max_users']),
-                    'max_activations' => (int) ($this->option('max-activations') ?: $planConfig['max_activations']),
-                    'issued_at'       => now(),
-                    'expires_at'      => now()->addDays($durationDays),
-                    'status'          => 'active',
-                ]);
-
-                AuditLog::record('license.issued', 'license', $license->id, [
-                    'org_id' => $org->id,
-                    'plan'   => $plan,
-                    'type'   => $type,
-                    'expires_at' => $license->expires_at->toISOString(),
-                    'via'    => 'cli',
-                ], 'system');
-
-                $this->info("Issued {$type} {$plan} license {$license->license_key} (expires {$license->expires_at->toDateString()}).");
-            }
-
-            // Build a .env snippet for the operator to paste into the consuming app.
-            $serverUrl = $this->option('server-url') ?: '<your-licensing-server-url>';
-            $envBlock  = "# Licensing — provisioned for {$org->slug} on " . now()->toIso8601String() . "\n"
-                       . "LICENSE_SERVER_URL={$serverUrl}\n"
-                       . "LICENSE_CLIENT_ID={$clientId}\n"
-                       . "LICENSE_CLIENT_SECRET={$clientSecret}\n";
-            if ($license) {
-                // Not an env var — the key is entered in Settings > License > Activate.
-                $envBlock .= "# LICENSE KEY (activate in the app UI): {$license->license_key}\n";
-            }
-
-            $dir = storage_path('app/provisioned-clients');
-            if (!is_dir($dir)) {
-                mkdir($dir, 0700, true);
-            }
-            $path = $dir . DIRECTORY_SEPARATOR . $slug . '.env';
-            file_put_contents($path, $envBlock);
-            @chmod($path, 0600);
-
-            $this->newLine();
-            $this->line('────────────────────────────────────────────────────────');
-            $this->info('API client provisioned. Credentials shown ONCE — store them now.');
-            $this->line('────────────────────────────────────────────────────────');
-            $this->line($envBlock);
-            $this->line('Snippet also written to: ' . $path);
-            $this->line('Paste the LICENSE_* lines into the consuming app\'s .env, then restart it.');
-            $this->newLine();
-
-            return self::SUCCESS;
-        });
+        return self::SUCCESS;
     }
 }
