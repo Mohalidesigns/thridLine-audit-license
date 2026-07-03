@@ -87,6 +87,7 @@ Route::prefix('v1')->group(function () {
         // Deployments (fleet registry: every activation + health/heartbeat)
         Route::get('deployments', [DeploymentController::class, 'index'])->middleware('perm:licenses.view');
         Route::get('deployments/{activation}/heartbeats', [DeploymentController::class, 'heartbeats'])->middleware('perm:licenses.view');
+        Route::post('deployments/{activation}/deactivate', [DeploymentController::class, 'deactivate'])->middleware('perm:licenses.update');
 
         // Audit Logs
         Route::get('audit-logs', [AuditLogController::class, 'index'])->middleware('perm:audit-logs.view');

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\LicenseActivation;
 use App\Models\LicenseUsageMetric;
 use Illuminate\Http\JsonResponse;
@@ -82,6 +83,50 @@ class DeploymentController extends Controller
                     'feature_usage' => $m->feature_usage,
                     'reported_at' => $m->reported_at?->toISOString(),
                 ]),
+            ],
+        ]);
+    }
+
+    /**
+     * Admin-approved fingerprint reset: release one activation slot (e.g. the
+     * customer replaced the server). The old device locks itself on its next
+     * validate/heartbeat (activation_not_found); the freed slot lets the new
+     * machine activate with the same license key — the license is untouched.
+     */
+    public function deactivate(Request $request, LicenseActivation $activation): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        if ($activation->status !== 'active') {
+            return response()->json([
+                'error' => 'activation_not_active',
+                'message' => 'This activation has already been deactivated.',
+            ], 409);
+        }
+
+        $activation->update([
+            'status' => 'deactivated',
+            'deactivated_at' => now(),
+        ]);
+
+        AuditLog::record('activation.reset', 'activation', $activation->id, [
+            'license_id' => $activation->license_id,
+            'device_fingerprint' => $activation->device_fingerprint,
+            'domain' => $activation->domain,
+            'hostname' => $activation->hostname,
+            'reason' => $validated['reason'] ?? null,
+            'initiated_by' => 'admin',
+        ]);
+
+        return response()->json([
+            'data' => [
+                'activation_id' => $activation->id,
+                'status' => 'deactivated',
+                'deactivated_at' => $activation->deactivated_at->toISOString(),
+                'freed_slots' => max(0, $activation->license->max_activations
+                    - $activation->license->activeActivations()->count()),
             ],
         ]);
     }

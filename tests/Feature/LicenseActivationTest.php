@@ -184,6 +184,40 @@ class LicenseActivationTest extends TestCase
         );
     }
 
+    public function test_reactivation_after_admin_reset_reuses_the_row(): void
+    {
+        $fp = hash('sha256', 'reset-device');
+
+        $first = $this->postJson('/api/v1/licenses/activate', [
+            'license_key' => $this->license->license_key,
+            'device_fingerprint' => $fp,
+        ], $this->activationHeaders());
+        $first->assertStatus(200);
+        $activationId = $first->json('data.activation_id');
+
+        // Admin resets the fingerprint (releases the slot).
+        LicenseActivation::whereKey($activationId)->update([
+            'status' => 'deactivated',
+            'deactivated_at' => now(),
+        ]);
+
+        // Re-activating the SAME device must reuse the deactivated row (the
+        // (license_id, device_fingerprint) unique index would otherwise 500).
+        $second = $this->postJson('/api/v1/licenses/activate', [
+            'license_key' => $this->license->license_key,
+            'device_fingerprint' => $fp,
+        ], $this->activationHeaders());
+
+        $second->assertStatus(200);
+        $this->assertEquals($activationId, $second->json('data.activation_id'));
+        $this->assertSame(1, LicenseActivation::where('license_id', $this->license->id)->count());
+        $this->assertDatabaseHas('license_activations', [
+            'id' => $activationId,
+            'status' => 'active',
+            'deactivated_at' => null,
+        ]);
+    }
+
     public function test_reactivation_updates_last_seen_at(): void
     {
         // First activation

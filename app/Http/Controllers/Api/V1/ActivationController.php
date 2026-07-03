@@ -140,15 +140,37 @@ class ActivationController extends Controller
                 return ['limit_reached' => true, 'current_activations' => $activeCount];
             }
 
-            return LicenseActivation::create([
-                'license_id' => $license->id,
-                'device_fingerprint' => $validated['device_fingerprint'],
+            $meta = array_filter([
                 'hostname' => $validated['hostname'] ?? null,
                 'domain' => $validated['domain'] ?? null,
                 'ip_address' => $validated['ip_address'] ?? $request->ip(),
                 'os_info' => $validated['os_info'] ?? null,
                 'app_version' => $validated['app_version'] ?? null,
                 'app_env' => $validated['app_env'] ?? null,
+            ], fn ($v) => $v !== null);
+
+            // A previously-deactivated row for this (license, device) still holds
+            // the unique slot, so reactivate it in place rather than inserting a
+            // duplicate. This is the re-activation path after an admin fingerprint
+            // reset (or a device that self-deactivated and comes back).
+            $prior = LicenseActivation::where('license_id', $license->id)
+                ->where('device_fingerprint', $validated['device_fingerprint'])
+                ->first();
+
+            if ($prior) {
+                $prior->update($meta + [
+                    'status' => 'active',
+                    'activated_at' => now(),
+                    'last_seen_at' => now(),
+                    'deactivated_at' => null,
+                ]);
+
+                return $prior;
+            }
+
+            return LicenseActivation::create($meta + [
+                'license_id' => $license->id,
+                'device_fingerprint' => $validated['device_fingerprint'],
                 'activated_at' => now(),
                 'last_seen_at' => now(),
                 'status' => 'active',
