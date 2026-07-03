@@ -36,6 +36,17 @@
         this.heartbeatsLoading = false;
     },
 
+    async resetActivation(dep) {
+        const label = dep.domain || dep.hostname || dep.id;
+        if (!confirm(`Approve fingerprint reset for ${label}?\n\nThe current machine will lock on its next check-in and the freed slot can be re-activated on new hardware with the same license key.`)) return;
+        const reason = prompt('Reason (optional, recorded in the audit log):') ?? '';
+        try {
+            const res = await api.post(`/deployments/${dep.id}/deactivate`, { reason });
+            $store.notify.success(`Slot released — ${res.data.freed_slots} slot(s) now free on this license.`);
+            this.load();
+        } catch (e) { $store.notify.error(e.message || 'Failed to release the activation slot'); }
+    },
+
     healthBadge(dep) {
         if (dep.status !== 'active') return 'bg-gray-100 text-gray-600';
         if (dep.is_stale) return 'bg-red-100 text-red-800';
@@ -125,9 +136,12 @@
                                 <div x-text="ago(dep.last_seen_at)"></div>
                                 <div class="text-xs text-text-secondary" x-text="dep.last_seen_at ? new Date(dep.last_seen_at).toLocaleString() : ''"></div>
                             </td>
-                            <td class="px-4 py-3 text-right">
+                            <td class="px-4 py-3 text-right whitespace-nowrap">
                                 <button @click="toggleHeartbeats(dep)" class="text-xs font-medium text-primary hover:underline"
                                         x-text="expanded === dep.id ? 'Hide history' : 'History'"></button>
+                                <button x-show="dep.status === 'active'" @click="resetActivation(dep)"
+                                        class="ml-3 text-xs font-medium text-red-600 hover:underline"
+                                        title="Approve fingerprint reset — releases this activation slot for new hardware">Reset</button>
                             </td>
                         </tr>
                         <tr x-show="expanded === dep.id" x-cloak>
