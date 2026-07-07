@@ -63,7 +63,8 @@ class LicenseController extends Controller
             'license_key' => $this->engine->generateLicenseKey(),
             'plan' => $validated['plan'],
             'type' => $type,
-            'features' => $validated['features'],
+            // Full catalog with explicit booleans (ticked => true, rest => false).
+            'features' => $request->normalizedFeatures(),
             'max_users' => $validated['max_users'],
             'max_activations' => $validated['max_activations'],
             'issued_at' => now(),
