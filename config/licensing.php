@@ -14,6 +14,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Feature catalog (canonical module list)
+    |--------------------------------------------------------------------------
+    | The full set of licensable modules, key => display label. This is the
+    | single source of truth for the "Issue New License" feature checkboxes and
+    | for validating the posted features. Must stay in sync with the consumer's
+    | config('licensing.available_features') and with the per-plan feature maps.
+    */
+    'available_features' => [
+        'audit'        => 'Audit Management',
+        'risk'         => 'Risk Management',
+        'compliance'   => 'Compliance Management',
+        'swift_cscf'   => 'SWIFT CSCF Module',
+        'iso_27001'    => 'ISO 27001 ISMS',
+        'iso_22301'    => 'ISO 22301 BCMS',
+        'iso_20000'    => 'ISO 20000 ITSMS',
+        'iso_45001'    => 'ISO 45001 OHSMS',
+        'iso_20022'    => 'ISO 20022 FMS',
+        'pci_dss'      => 'PCI DSS v4.0',
+        'ndpa'         => 'NDPA GAID',
+        'icfr'         => 'ICFR/SOX Compliance',
+        'ai_assistant' => 'AI Assistant',
+        'analytics'    => 'Advanced Analytics',
+        'reporting'    => 'Custom Reporting',
+        'committee'    => 'Audit Committee Portal',
+        'evidence_repo' => 'Evidence Repository',
+        'performance'  => 'Performance Management',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | License types
     |--------------------------------------------------------------------------
     | Orthogonal to "plan" (which is the entitlement tier). "type" is the

@@ -1,4 +1,17 @@
+@php
+    $featureCatalog = config('licensing.available_features');
+    $planFeatures = collect(config('licensing.plans'))
+        ->mapWithKeys(fn ($p, $k) => [$k => $p['features']])
+        ->all();
+    $planLimits = collect(config('licensing.plans'))
+        ->mapWithKeys(fn ($p, $k) => [$k => ['max_users' => $p['max_users'], 'max_activations' => $p['max_activations']]])
+        ->all();
+@endphp
 <div x-data="{
+    // Canonical module catalog + per-plan feature maps (server config = source of truth).
+    featureCatalog: {{ Illuminate\Support\Js::from($featureCatalog) }},
+    planFeatures: {{ Illuminate\Support\Js::from($planFeatures) }},
+    planLimits: {{ Illuminate\Support\Js::from($planLimits) }},
     licenses: [],
     pagination: {},
     search: '',
@@ -27,12 +40,22 @@
     form: {
         org_id: '',
         plan: 'professional',
-        features: { audit: true, risk: true, compliance: true, swift_cscf: false, ai_assistant: false },
+        features: {},   // populated to the full catalog by init() below
         max_users: 15,
         max_activations: 2,
         duration_days: 365,
         notes: '',
     },
+    // A complete features object: every catalog key present, seeded from a plan
+    // (or all-false). Guarantees the issued license explicitly sets all 18.
+    fullFeatures(planKey) {
+        const src = this.planFeatures[planKey] ?? {};
+        const out = {};
+        Object.keys(this.featureCatalog).forEach(k => { out[k] = src[k] === true; });
+        return out;
+    },
+    selectedFeatureCount() { return Object.values(this.form.features).filter(Boolean).length; },
+    setAllFeatures(val) { Object.keys(this.form.features).forEach(k => this.form.features[k] = val); },
     orgs: [],
     issuing: false,
     revoking: false,
@@ -199,21 +222,17 @@
     },
 
     applyPlanDefaults() {
-        const plans = {
-            starter: { max_users: 5, max_activations: 1, features: { audit: true, risk: false, compliance: false, swift_cscf: false, ai_assistant: false } },
-            professional: { max_users: 15, max_activations: 2, features: { audit: true, risk: true, compliance: true, swift_cscf: false, ai_assistant: false } },
-            enterprise: { max_users: 50, max_activations: 5, features: { audit: true, risk: true, compliance: true, swift_cscf: true, ai_assistant: true } },
-        };
-        const p = plans[this.form.plan];
-        if (p) {
-            this.form.max_users = p.max_users;
-            this.form.max_activations = p.max_activations;
-            this.form.features = { ...p.features };
-        }
+        // Limits come from server config (planLimits), so the form defaults never
+        // drift from config('licensing.plans').
+        const l = this.planLimits[this.form.plan];
+        if (l) { this.form.max_users = l.max_users; this.form.max_activations = l.max_activations; }
+        // Feature set follows the plan (full 18-key object).
+        this.form.features = this.fullFeatures(this.form.plan);
     },
 
     resetForm() {
-        this.form = { org_id: '', plan: 'professional', features: { audit: true, risk: true, compliance: true, swift_cscf: false, ai_assistant: false }, max_users: 15, max_activations: 2, duration_days: 365, notes: '' };
+        const l = this.planLimits['professional'] ?? { max_users: 25, max_activations: 2 };
+        this.form = { org_id: '', plan: 'professional', features: this.fullFeatures('professional'), max_users: l.max_users, max_activations: l.max_activations, duration_days: 365, notes: '' };
     },
 
     statusColor(status) {
@@ -224,7 +243,7 @@
             expired: 'bg-gray-100 text-gray-600',
         }[status] || 'bg-gray-100 text-gray-600';
     },
-}" x-init="load(); loadOrgs()">
+}" x-init="load(); loadOrgs(); resetForm()">
 
     {{-- Header --}}
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
@@ -232,7 +251,7 @@
             <h2 class="text-xl font-bold text-text-primary">License Management</h2>
             <p class="text-sm text-text-secondary mt-0.5">Issue, manage, and revoke licenses across organizations</p>
         </div>
-        <button @click="showIssueModal = true; loadOrgs()"
+        <button @click="resetForm(); showIssueModal = true; loadOrgs()"
                 class="px-4 py-2 bg-primary hover:bg-primary-light text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shadow-sm">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
             Issue License
@@ -380,12 +399,21 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium mb-2">Feature Entitlements</label>
-                    <div class="grid grid-cols-2 gap-2">
-                        <template x-for="[feat, val] in Object.entries(form.features)" :key="feat">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-medium">Feature Entitlements
+                            <span class="text-text-secondary font-normal" x-text="'(' + selectedFeatureCount() + ' of ' + Object.keys(featureCatalog).length + ')'"></span>
+                        </label>
+                        <div class="flex items-center gap-3 text-xs">
+                            <button type="button" @click="setAllFeatures(true)" class="font-medium text-primary hover:underline">Select all</button>
+                            <span class="text-gray-300">|</span>
+                            <button type="button" @click="setAllFeatures(false)" class="font-medium text-text-secondary hover:underline">Clear</button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                        <template x-for="[key, label] in Object.entries(featureCatalog)" :key="key">
                             <label class="flex items-center gap-2 p-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
-                                <input type="checkbox" :checked="val" @change="form.features[feat] = $el.checked" class="rounded border-gray-300 text-primary focus:ring-primary">
-                                <span class="text-sm capitalize" x-text="feat.replace('_', ' ')"></span>
+                                <input type="checkbox" :checked="form.features[key] === true" @change="form.features[key] = $el.checked" class="rounded border-gray-300 text-primary focus:ring-primary">
+                                <span class="text-sm" x-text="label"></span>
                             </label>
                         </template>
                     </div>
