@@ -28,6 +28,7 @@
     selectedLicense: null,
     issuedLicense: null,
     revokeReason: '',
+    revokeConfirmKey: '',
     keyCopied: false,
 
     // Offline activation
@@ -104,11 +105,14 @@
             await api.post('/licenses/revoke', {
                 license_id: this.selectedLicense.id,
                 reason: this.revokeReason,
+                // Server safety check: must match the target key exactly (hash_equals).
+                confirm_license_key: this.revokeConfirmKey,
                 effective_immediately: true,
             });
             $store.notify.success('License revoked successfully');
             this.showRevokeModal = false;
             this.revokeReason = '';
+            this.revokeConfirmKey = '';
             this.selectedLicense = null;
             this.load();
         } catch (e) {
@@ -334,7 +338,7 @@
                                     </button>
                                     {{-- Revoke --}}
                                     <button x-show="lic.status === 'active'"
-                                            @click="selectedLicense = lic; showRevokeModal = true"
+                                            @click="selectedLicense = lic; revokeReason = ''; revokeConfirmKey = ''; showRevokeModal = true"
                                             class="p-1.5 rounded-lg hover:bg-red-50 text-text-secondary hover:text-error transition-colors" title="Revoke">
                                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
                                     </button>
@@ -531,10 +535,17 @@
                     <label class="block text-sm font-medium mb-1">Reason for Revocation *</label>
                     <textarea x-model="revokeReason" rows="3" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-error/20 focus:border-error outline-none" placeholder="Contract terminated, non-payment, etc."></textarea>
                 </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Type the license key to confirm *</label>
+                    <input type="text" x-model="revokeConfirmKey" spellcheck="false" autocomplete="off"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-error/20 focus:border-error outline-none"
+                           :placeholder="selectedLicense?.license_key">
+                    <p x-show="revokeConfirmKey && revokeConfirmKey !== selectedLicense?.license_key" class="text-xs text-error mt-1">Key does not match.</p>
+                </div>
             </div>
             <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
                 <button @click="showRevokeModal = false" class="px-4 py-2 text-sm font-medium text-text-secondary hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                <button @click="revokeLicense()" :disabled="revoking || !revokeReason" class="px-4 py-2 bg-error hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
+                <button @click="revokeLicense()" :disabled="revoking || !revokeReason || revokeConfirmKey !== selectedLicense?.license_key" class="px-4 py-2 bg-error hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
                     <span x-text="revoking ? 'Revoking...' : 'Revoke License'"></span>
                 </button>
             </div>
