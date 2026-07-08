@@ -46,6 +46,24 @@ services:
         condition: service_healthy
     networks: [internal]
 
+  scheduler:
+    image: thirdline-license-app
+    restart: unless-stopped
+    env_file: .env
+    # Foreground scheduler: runs `schedule:run` every minute so
+    # licenses:expire-check / apply-revocations / heartbeat-alerts actually fire.
+    command: php artisan schedule:work
+    volumes:
+      - license-storage:/var/www/html/storage
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [internal]
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
