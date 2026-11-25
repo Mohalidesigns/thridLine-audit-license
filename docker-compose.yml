@@ -10,6 +10,7 @@ services:
     env_file: .env
     volumes:
       - license-storage:/var/www/html/storage
+      - ./docker/php-fpm-pool.conf:/usr/local/etc/php-fpm.d/zz-pool.conf:ro
     depends_on:
       postgres:
         condition: service_healthy
